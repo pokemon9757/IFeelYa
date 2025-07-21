@@ -4,16 +4,23 @@ using UnityEngine;
 public class EmotionAnalyzer : MonoBehaviour
 {
     public NNModel modelAsset;
-    // Match Python's offset values exactly
-   public float offset_v = 0.25f;
-    public float offset_a = 0.05f; private Model runtimeModel;
+
+    [Header("Emotion Recognition Parameters")]
+    [Tooltip("Offset added to valence output. Decrease if valence is too high.")]
+    public float offset_v = 0.0f;  // Removed default offset
+    [Tooltip("Offset added to arousal output. Adjust to shift arousal range.")]
+    public float offset_a = 0.0f;  // Removed default offset
+
+    [Header("Normalization Parameters")]
+    [Tooltip("RGB mean values for normalization. Adjust if emotions aren't recognized correctly.")]
+    public Vector3 normalizationMean = new Vector3(0.285f, 0.256f, 0.206f);  // Much lower for increased sensitivity
+    [Tooltip("RGB standard deviation values for normalization. Adjust if emotions aren't recognized correctly.")]
+    public Vector3 normalizationStd = new Vector3(0.4f, 0.4f, 0.4f);  // Significantly increased for more pronounced differences
+
+    private Model runtimeModel;
     private IWorker worker;
     private const int IMAGE_SIZE = 224;
-
-    // Match Python's normalization values exactly
-    private static readonly float[] NORMALIZATION_MEAN = new float[] { 0.485f, 0.456f, 0.406f };
-    private static readonly float[] NORMALIZATION_STD = new float[] { 0.229f, 0.224f, 0.225f };
-
+    float timeCount = 0;
     // Match Python's emotion categories
     private readonly string[] emotionList = new string[]
     {
@@ -34,8 +41,19 @@ public class EmotionAnalyzer : MonoBehaviour
 
 
 
-        float valence = outputTensor[0, 0] + offset_v;
-        float arousal = outputTensor[0, 1] + offset_a;
+        float rawValence = outputTensor[0, 0];
+        float rawArousal = outputTensor[0, 1];
+
+        float valence = rawValence + offset_v;
+        float arousal = rawArousal + offset_a;
+
+        // Log raw and adjusted values for tuning
+        if (Time.time - timeCount > 3f)
+        {
+            Debug.Log($"Emotion Values - Raw: (V:{rawValence:F3}, A:{rawArousal:F3}), " +
+                     $"Adjusted: (V:{valence:F3}, A:{arousal:F3})");
+            timeCount = Time.time;  
+        }
 
         inputTensor.Dispose();
         return new Vector2(valence, arousal);
@@ -73,10 +91,10 @@ public class EmotionAnalyzer : MonoBehaviour
                 Color pixel = resized.GetPixel(x, y);
                 int offset = (y * IMAGE_SIZE + x) * 3;
 
-                // Match Python's normalization exactly
-                tensorData[offset] = (pixel.r - NORMALIZATION_MEAN[0]) / NORMALIZATION_STD[0];
-                tensorData[offset + 1] = (pixel.g - NORMALIZATION_MEAN[1]) / NORMALIZATION_STD[1];
-                tensorData[offset + 2] = (pixel.b - NORMALIZATION_MEAN[2]) / NORMALIZATION_STD[2];
+                // Apply normalization with adjustable parameters
+                tensorData[offset] = (pixel.r - normalizationMean.x) / normalizationStd.x;
+                tensorData[offset + 1] = (pixel.g - normalizationMean.y) / normalizationStd.y;
+                tensorData[offset + 2] = (pixel.b - normalizationMean.z) / normalizationStd.z;
             }
         }
 

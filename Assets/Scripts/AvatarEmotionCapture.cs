@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using System.Collections.Generic;
+using System.IO;
 
 public class AvatarEmotionCapture : MonoBehaviour
 {
@@ -8,13 +9,20 @@ public class AvatarEmotionCapture : MonoBehaviour
     private EmotionAnalyzer emotionAnalyzer;
     private int frameCount = 0;
     [SerializeField] private TextMeshProUGUI debugText;
-    
+
+    [Header("Image Saving")]
+    [SerializeField] private bool saveFramesToDisk = false;
+    [SerializeField] private string savePath = "EmotionCaptures";
+    private string fullSavePath;
+
     // Match Python's image batch functionality
     private List<Texture2D> imageBatch;
     private const int MAX_BATCH_SIZE = 10;
 
     void Start()
     {
+        fullSavePath = Path.Combine(Application.dataPath, "..", savePath);
+        Directory.CreateDirectory(fullSavePath);
         emotionAnalyzer = GetComponent<EmotionAnalyzer>();
         imageBatch = new List<Texture2D>();
     }
@@ -48,6 +56,13 @@ public class AvatarEmotionCapture : MonoBehaviour
                 emotion
             );
 
+            // Save frame if enabled
+            if (saveFramesToDisk)
+            {
+                SaveTextureToFile(frameTexture, emotionValues, emotion);
+                saveFramesToDisk = false; // Reset flag after saving
+            }
+
             Destroy(frameTexture); // Clean up
         }
         frameCount++;
@@ -61,13 +76,13 @@ public class AvatarEmotionCapture : MonoBehaviour
             Debug.LogError("No RenderTexture attached to the avatar camera!");
             return null;
         }
-        
+
         camera.Render();
         RenderTexture.active = rt;
         Texture2D texture = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
         texture.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
         texture.Apply();
-        
+
         RenderTexture.active = null;
         return texture;
     }
@@ -81,5 +96,19 @@ public class AvatarEmotionCapture : MonoBehaviour
                 Destroy(image);
         }
         imageBatch.Clear();
+    }
+
+    private void SaveTextureToFile(Texture2D texture, Vector2 emotionValues, string emotion)
+    {
+        // Create filename with timestamp and emotion data
+        string timestamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
+        string filename = $"emotion_{timestamp}_V{emotionValues.x:F2}_A{emotionValues.y:F2}_{emotion}.png";
+        string filepath = Path.Combine(fullSavePath, filename);
+
+        // Encode texture as PNG
+        byte[] bytes = texture.EncodeToPNG();
+        File.WriteAllBytes(filepath, bytes);
+
+        Debug.Log($"Saved emotion capture: {filename}");
     }
 }
